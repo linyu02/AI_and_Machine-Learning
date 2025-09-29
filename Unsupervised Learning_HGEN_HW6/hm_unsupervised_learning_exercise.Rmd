@@ -1,0 +1,420 @@
+---
+title: "HGEN 48800 homework: Unsupervised learning methods applied to some genomics problems"
+author: "Lin_Yu"
+date: "2024-04-29"
+output: pdf_document
+---
+
+```{=html}
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 16px;
+  }
+td {  /* Table  */
+  font-size: 16px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 28px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+    font-size: 22px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 18px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Problem 1: Batch effect
+
+## Dependencies
+
+This document depends on the following packages:
+
+```{r load_hidden, echo=FALSE, results="hide", warning=FALSE,eval=FALSE}
+suppressPackageStartupMessages({
+  library(devtools)
+  library(Biobase)
+  library(sva)
+  library(bladderbatch)
+  library(snpStats)
+  library(factoextra)
+})
+```
+
+```{r load, eval=FALSE}
+  library(devtools)
+  library(Biobase)
+  library(sva)
+  library(bladderbatch)
+  library(snpStats)
+  library(factoextra)
+```
+
+To install these packages you can use the code (or if you are compiling the document, remove the `eval=FALSE` from the chunk.)
+
+```{r install_packages, eval=FALSE}
+#install.packages(c("devtools","factoextra"))
+library(BiocManager)
+#BiocManager::install(c("Biobase","sva","bladderbatch","snpStats"))
+```
+
+## Download the data
+
+The analyses performed in this experiment are based on gene expression measurements from a bladder cancer study: [Gene expression in the urinary bladder: a common carcinoma in situ gene expression signature exists disregarding histopathological classification.](http://cancerres.aacrjournals.org/content/64/11/4040.full.pdf) The data can be loaded from the [bladderbatch](http://bioconductor.org/packages/release/data/experiment/html/bladderbatch.html) data package.
+
+```{r, eval=FALSE}
+data(bladderdata)
+```
+
+## Set up the data
+
+```{r, eval=FALSE}
+pheno = pData(bladderEset)
+edata = exprs(bladderEset)
+colnames(edata) <- gsub(".CEL", "", colnames(edata))
+colnames(edata) <- paste0("B", pheno$batch, "_", colnames(edata))
+table(pheno$batch, pheno$outcome)
+```
+
+## Perform PCA
+
+```{r, eval=FALSE}
+resPC <-  prcomp(t(edata))
+batch.id <- pheno$batch
+outcome <- pheno$outcome
+
+
+PC1 <- resPC$x[, 1]
+PC2 <- resPC$x[, 2]
+
+# Plot the PCA
+pca_df <- data.frame(PC1 = PC1, PC2 = PC2, Batch = batch.id, Outcome = outcome)
+
+library(ggplot2)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = Batch, shape = Outcome)) +
+  geom_point(size = 3) +
+  labs(title = "PCA Plot", x = "PC1", y = "PC2") +
+  theme_minimal() +
+  theme(legend.position = "right")
+```
+
+## Perform hierarchical clustering
+
+```{r, eval=FALSE}
+d <- dist(t(edata), method = "euclidean")
+
+# Hierarchical clustering using Complete Linkage
+d <- dist(t(edata), method = "euclidean")
+
+# Hierarchical clustering using Complete Linkage
+hc <- hclust(d, method = "complete")
+
+# Plot the obtained dendrogram
+plot(hc, main = "Hierarchical Clustering", xlab = "Samples", sub = "", cex = 0.5)
+
+```
+
+## Visualze the clustering results in a scatter plot
+
+```{r, eval=FALSE}
+# using function fviz_cluster()
+
+# Cut the tree into a desired number of clusters, e.g., k = 5
+clusters <- hcut(t(edata),k=5,hc_method="complete")
+
+# using function fviz_cluster() to visualize the clusters
+fviz_cluster(clusters,
+             geom = "point",           # Type of plot (points)
+             ellipse.type = "norm")          # Color palette
+```
+
+#### Questions:
+
+-   Finish the code above and report output of each step. Answer:
+    1.  Can you make comments on the experimental design based on the table of batch and outcome? Any problems? How can you improve the design?
+    2.  By looking at PCA, do you observe batch effects in this dataset? Why or why not?
+    3.  When only looking at the above hierarchical clustering results, can you make judgements on the batch effects? If not, what esle analysis do you need to do?
+
+#### Answers:
+1. The table shows a significant imbalance in clinical outcomes across batches, leading to potential biases. For instance, batch 5 contains mostly sTCC+CIS samples, while Batches 2,3 contains mostly Normal samples, indicating a skewed distribution. Additionally, certain outcomes like Biopsy and mTCC are only present in select batches, making it harder to control for batch effects. To enhance the design, samples should be randomly distributed across batches, ensuring a balanced representation of clinical outcomes. Adding replicates for each outcome across batches could also be helpful when identifying batch effects. Employing batch effect correction methods, conducting pilot studies, and standardizing protocols can also help minimize biases and improve the study's reliability.
+
+2. The PCA plot suggests minimal batch effects, as evidenced by the lack of strong clustering based on color (batch information), indicating batches do not strongly influence the primary data variations.  
+
+3. By comparing the PCA plots with hierarchical clustering plots, we observe a batch effect in hierarchical clustering. The clusters closely align with batches 1 to 5. This pattern is also evident in the dendrogram, where in certain branches, all leaves come from the same batch.
+
+# Problem 2: Techinical Variability Vs. Biological Variability
+
+## Introduction
+
+In the following sections we will cover inference in the context of genomics experiments. Here we introduce a concept that is particularly important in the analysis of genomics data: the distinction between biological and technical variability.
+
+In general, the variability we observe across biological units, such as individuals, within a population is referred to as **biological**. We refer to the variability we observe across measurements of the same biological unit, such a aliquots from the same biological sample, as **technical**. Because newly developed measurement technologies are common in genomics, technical replicates are used many times to assess experimental data. By generating measurements from samples that are designed to be the same, we are able to measure and assess technical variability. We also use the terminology **biological replicates** and **technical replicates** to refer to samples from which we can measure biological and technical variability respectively.
+
+It is important not to confuse biological and technical variability when performing statistical inference as the interpretation is quite different. For example, when analyzing data from technical replicates, the population is just the one sample from which these come from as opposed to more general population such as healthy humans or control mice. Here we explore this concept with a experiment that was designed to include both technical and biological replicates.
+
+## Pooling experiment data
+
+The dataset we will study includes data from gene expression arrays. In this experiment, RNA was extracted from 12 randomly selected mice from two strains. All 24 samples were hybridized to microarrays but we also formed pools, including two pools from with the RNA from all twelve mice from each of the two strains. Other pools were also created, as we will see below, but we will ignore these here.
+
+We will need the following library which you need to install if you have not done so already:
+
+```{r,eval=FALSE}
+library(devtools)
+install_github("genomicsclass/maPooling")
+install_github("ririzarr/rafalib")
+```
+
+We can see the experimental design using the `pData` function. Each row represents a sample and the column are the mice. A 1 in cell $i,j$ indicates that RNA from mouse $j$ was included in sample $i$. The strain can be identified from the row names (this is not a recommended approach, you can add additional variables to the phenoData to make strain information explicit.)
+
+```{r,message=FALSE,eval=FALSE}
+library(Biobase)
+library(maPooling)
+data(maPooling)
+head(pData(maPooling))
+```
+
+Below we create an image to illustrate which mice were included in which samples:
+
+```{r,message=FALSE,eval=FALSE}
+library(rafalib)
+mypar()
+flipt <- function(m) t(m[nrow(m):1,])
+myimage <- function(m,...) {
+  image(flipt(m),xaxt="n",yaxt="n",...)
+  }
+myimage(as.matrix(pData(maPooling)),col=c("white","black"),
+        xlab="experiments",
+        ylab="individuals",
+        main="phenoData")
+```
+
+Note that ultimately we are interested in detecting genes that are differentially expressed between the two strains of mice which we will refer to as strain 0 and 1. We can apply tests to the technical replicates of pooled samples or the data from 12 individual mice. We can identify these pooled samples because all mice from each strain were represented in these samples and thus the sum of the rows of experimental design matrix add up to 12:
+
+```{r,eval=FALSE}
+data(maPooling)
+pd=pData(maPooling)
+pooled=which(rowSums(pd)==12)
+```
+
+We can determine the strain from the column names:
+
+```{r,eval=FALSE}
+factor(as.numeric(grepl("b",names(pooled))))
+```
+
+If we compare the mean expression between groups for each gene we find several showing consistent differences. Here are two examples:
+
+```{r, fig.height=3, fig.width=6,eval=FALSE}
+###look at 2 pre-selected genes for illustration
+i=11425;j=11878
+pooled_y=exprs(maPooling[,pooled])
+pooled_g=factor(as.numeric(grepl("b",names(pooled))))
+mypar(1,2)
+stripchart(split(pooled_y[i,],pooled_g),vertical=TRUE,method="jitter",col=c(1,2),
+           main="Gene 1",xlab="Group",pch=15)
+stripchart(split(pooled_y[j,],pooled_g),vertical=TRUE,method="jitter",col=c(1,2),
+           main="Gene 2",xlab="Group",pch=15)
+```
+
+Note that if we compute a t-test from these values we obtain highly significant results
+
+```{r,eval=FALSE}
+library(genefilter)
+pooled_tt=rowttests(pooled_y,pooled_g)
+pooled_tt$p.value[i]
+pooled_tt$p.value[j]
+```
+
+Observe that what is being replicated here is the experimental protocol. We have created four **technical replicates** for each pooled sample. Gene 1 may be a highly variable gene within strain of mice while Gene 2 a stable one, but we have no way of seeing this, because mouse-to-mouse variability is submerged in the act of pooling.
+
+We also have microarray data for each individual mouse. For each strain we have 12 **biological replicates**. We can find them by looking for rows with just one 1.
+
+```{r,eval=FALSE}
+individuals=which(rowSums(pd)==1)
+```
+
+It turns out that some technical replicates were included for some individual mice so we remove them to illustrate an analysis with only biological replicates:
+
+```{r,eval=FALSE}
+##remove replicates
+individuals=individuals[-grep("tr",names(individuals))]
+y=exprs(maPooling)[,individuals]
+g=factor(as.numeric(grepl("b",names(individuals))))
+```
+
+We can compute the sample variance for each gene and compare to the standard deviation obtained with the technical replicates.
+
+```{r,eval=FALSE}
+technicalsd <- rowSds(pooled_y[,pooled_g==0])
+biologicalsd <- rowSds(y[,g==0])
+LIM=range(c(technicalsd,biologicalsd))
+mypar(1,1)
+boxplot(technicalsd,biologicalsd,names=c("technical","biological"),ylab="standard deviation")
+```
+
+Note the biological variance is much larger than the technical variance. And also that the variability of variances is also larger for biological variance. Here are the two genes we showed above but now we show expression values measured on each individual mouse
+
+```{r,eval=FALSE}
+mypar(1,2)
+stripchart(split(y[i,],g),vertical=TRUE,method="jitter",col=c(1,2),xlab="Gene 1",pch=15)
+points(c(1,2),tapply(y[i,],g,mean),pch=4,cex=1.5)
+stripchart(split(y[j,],g),vertical=TRUE,method="jitter",col=c(1,2),xlab="Gene 2",pch=15)
+points(c(1,2),tapply(y[j,],g,mean),pch=4,cex=1.5)
+```
+
+Now the p-values tell a different story
+
+```{r,eval=FALSE}
+library(genefilter)
+tt=rowttests(y,g)
+tt$p.value[i]
+tt$p.value[j]
+```
+
+#### Questions:
+
+-   Read the context and run the code above. Answer:
+    1.  What does the biolgical and technical variability mean in this example?
+    2.  Which of these two genes do we feel more confident reporting as being differentially expressed between strains?
+    3.  If another investigator takes another random sample of mice and tries the same experiment, which gene do you think will be identified?
+    
+#### Answer:
+1. Biological variability means differences in gene expression observed between individual mice, which captures the natural variation present in the population.
+Technical variability means differences in measurements taken from pooled RNA of the same mice.  And these differences are introduced by the measurement technology and experimental protocol
+
+2. After adjusting for technical variability in the graph, we are more confident that gene 2 is differentially expressed between strains.
+
+3. I believe gene 2 should be identified as differentially expressed, as the graph suggests that biological variability plays a more significant role. And I have evident that, without technical variability, gene 2 is differentially expressed between strains.
+
+# Problem 3: Unsupervised visualization on gene expression data
+
+Machine learning is a very broad topic and a highly active research area. In the life sciences, much of what is described as `precision medicine` is an application of machine learning to biomedical data. The general idea is to predict or discover outcomes from measured predictors. Clustering is a major machine learning component that can be used to answer questions like following: can we discover new types of cancer from gene expression profiles? Can we seperate cell lines or tissues based on gene expression markers?
+
+## Clustering
+
+We will demonstrate the concepts and code needed to perform clustering analysis with the tissue gene expression data:
+
+```{r,eval=FALSE}
+load("tissuesGeneExpression.rda")
+```
+
+#### Hierarchical clustering
+
+With the distance between each pair of samples computed, we need clustering algorithms to join them into groups. Hierarchical clustering is one of the many clustering algorithms available to do this. Each sample is assigned to its own group and then the algorithm continues iteratively, joining the two most similar clusters at each step, and continuing until there is just one group. While we have defined distances between samples, we have not yet defined distances between groups. There are various ways this can be done and they all rely on the individual pairwise distances. The helpfile for `hclust` includes detailed information.
+
+We can perform hierarchical clustering based on the distances defined above using the `hclust` function. This function returns an `hclust` object that describes the groupings that were created using the algorithm described above. The `plot` method represents these relationships with a tree or dendrogram:
+
+```{r dendrogram, fig.cap="Dendrogram showing hierarchical clustering of tissue gene expression data.",fig.width=10.5,fig.height=5.25,eval=FALSE}
+d <- dist( t(e) ) 
+library(rafalib)
+mypar()
+hc <- hclust(d)
+hc
+plot(hc,labels=tissue,cex=0.5)
+```
+
+Does this technique "discover" the clusters defined by the different tissues? In this plot, it is not easy to see the different tissues so we add colors by using the `myplclust` function from the `rafalib` package.
+
+```{r color_dendrogram, fig.cap="Dendrogram showing hierarchical clustering of tissue gene expression data with colors denoting tissues.",fig.width=10.5,fig.height=5.25,eval=FALSE}
+myplclust(hc, labels=tissue, lab.col=as.fumeric(tissue), cex=0.5)
+```
+
+Visually, it does seem as if the clustering technique has discovered the tissues. However, hierarchical clustering does not define specific clusters, but rather defines the dendrogram above. From the dendrogram we can decipher the distance between any two groups by looking at the height at which the two groups split into two.
+
+**Questions**: Use `cutree` function:
+
+-   Can you cut the tree into 8 clusters? Can you examine how the clusters overlap with the actual tissues using function `table`?
+Yes, I can. Based on the table, we observe that endometrium and kidney tissues predominantly cluster in cluster 1. Cerebellum tissues cluster primarily in cluster 3, while colon tissues mainly cluster in cluster 4. Hippocampus tissues are distributed across clusters 2 and 3, and liver tissues predominantly cluster in cluster 5
+
+
+-   Instead of specifying number of clusters, we can also define clusters by "cutting the tree" at some distance and group all samples that are within that distance into groups below. Can you cut the tree at the height of 120? How the clusters overlap with the actual tissues?
+
+
+-   Can you perform hierachical clustering using a different agglomeration method? Check `method` option in the `hclust` function for possibilities. Do you get same result using an alternative method? What does it imply in real data analysis when you have different choices of agglomeration methods and distance metrics?
+
+
+
+
+#### K-means
+
+We can also cluster with the `kmeans` function to perform k-means clustering. We can see this in the first plot above. If we instead perform k-means clustering using all of the genes, we obtain a much improved result. To visualize this, we can use an MDS plot:
+
+```{r kmeans_mds, fig.cap="Plot of gene expression for first two PCs with color representing tissues (left) and clusters found using all genes (right).",fig.width=10.5,fig.height=5.25, eval=FALSE}
+km <- kmeans(t(e), centers=7)
+mds <- cmdscale(d)
+## make the plot
+```
+
+**Questions**:
+
+-   What do you observe from the MDS plot? Do we obtain a similar answer to that obtained with hierarchical clustering? Confirm by tabulating the results.
+
+#### Heatmaps
+
+Heatmaps are ubiquitous in the genomics literature. They are very useful plots for visualizing the measurements for a subset of rows over all the samples. A *dendrogram* is added on top and on the side that is created with hierarchical clustering. We will demonstrate how to create heatmaps from within R. Let's begin by defining a color palette:
+
+```{r,eval=FALSE}
+library(RColorBrewer) 
+hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
+```
+
+Now, pick the genes with the top variance over all samples:
+
+```{r, message=FALSE,eval=FALSE}
+library(genefilter)
+rv <- rowVars(e)
+idx <- order(-rv)[1:40]
+```
+
+While a `heatmap` function is included in R, we recommend the `heatmap.2` function from the `gplots` package on CRAN because it is a bit more customized. For example, it stretches to fill the window. Here we add colors to indicate the tissue on the top:
+
+```{r heatmap.2,message=FALSE,fig.cap="Heatmap created using the 40 most variable genes and the function heatmap.2.", fig.width=10.5,fig.height=5.25,eval=FALSE}
+library(gplots) ##Available from CRAN
+cols <- palette(brewer.pal(8, "Dark2"))[as.fumeric(tissue)]
+head(cbind(colnames(e),cols))
+heatmap.2(e[idx,], labCol=tissue,
+          trace="none", 
+          ColSideColors=cols, 
+          col=hmcol)
+```
+
+We did not use tissue information to create this heatmap, and we can quickly see, with just 40 genes, good separation across tissues.
+
+**Questions**:
+
+-   Can you create heatmaps using the 100 most variable genes and the 200 most variable genes, respectively? How do your results compare to the heatmap based on 40 genes?
+
+-   How does the *dendrogram* on top of your heatmaps compare to that from previous hierarchical clustering analysis?
+
+
+## Reference
+
+This homework contains online materials written by Rafael Irizarry, Jeef Leek, Ethan Cerami, Dave Tang.
+
+## Session information
+
+Here is the session information.
+
+```{r}
+devtools::session_info()
+```
