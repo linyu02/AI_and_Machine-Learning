@@ -1,24 +1,18 @@
 📘 Machine Learning Projects
 
-This repository collects machine learning and deep learning projects from my coursework at the University of Chicago. Several projects implement algorithms from scratch (minimal libraries) to deepen mathematical and implementation intuition, while others (from computational biology) apply modern libraries to genetics/gene-expression problems.
+A collection of machine learning and deep learning projects from my University of Chicago coursework. Projects range from implementing algorithms from scratch to strengthen mathematical and coding intuition, to applying modern methods in computational biology.
 
 🔹 Contents
 
-- Theoretical Notes — concise summaries of core ML concepts and derivations.
+- Machine Learning Mindmaps — concise summaries of core ML concepts and derivations.
 
-- Clustering
+- Clustering — k-Means and Gaussian Mixture Models (EM) implemented from scratch on toy datasets.
 
- k-Means and Mixture of Gaussians (EM) implemented from scratch on toy datasets.
+- Classification Algorithms — classic linear methods such as the Perceptron.
 
-- Classification Algorithms
-  classic linear methods (e.g., Perceptron).
+- Neural Networks — feedforward network and an LSTM (PyTorch) for next-word prediction on story text.
 
-- Neural Networks
- LSTM (PyTorch) for next-word prediction on story text:
+- Gaussian Processes — nonparametric Bayesian models for classification and regression.
 
-- Gaussian Processes
-  nonparametric Bayesian models (classification/regression).
-
-- Deep Learning & Unsupervised in Biology 
-applications to gene expression (feature extraction, clustering, and predictive modeling).
+- Deep Learning & Unsupervised Learning in Biology — applications to gene-expression data, including feature extraction, clustering, and predictive modeling.
 
