@@ -1,4 +1,4 @@
-📘 Machine Learning Projects
+📘 AI - Machine Learning Projects
 
 A collection of machine learning and deep learning projects from my University of Chicago coursework. Projects range from implementing algorithms from scratch to strengthen mathematical and coding intuition, to applying modern methods in computational biology.
 
