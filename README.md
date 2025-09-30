@@ -16,3 +16,4 @@ A collection of machine learning and deep learning projects from my University o
 
 - Deep Learning & Unsupervised Learning in Biology — applications to gene-expression data, including feature extraction, clustering, and predictive modeling.
 
+💡 Taken together, these projects reflect the kinds of skills that matter in data science. They show I can code up algorithms from scratch to really understand how they work, apply supervised and unsupervised learning on real datasets, use probabilistic models to think about uncertainty, and even work with domain-specific data like gene expression. More importantly, they highlight the ability to move from theory to practice — turning data and models into insights.
